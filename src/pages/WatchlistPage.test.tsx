@@ -1,5 +1,6 @@
 import { render, screen } from "@testing-library/react";
 import { describe, expect, test, vi } from "vitest";
+import { createTrackedEpisode, createTrackedShow } from "../test/testUtils";
 import { WatchlistPage } from "./WatchlistPage";
 
 describe("WatchlistPage", () => {
@@ -46,5 +47,39 @@ describe("WatchlistPage", () => {
     );
 
     expect(screen.getByText("No watchlist yet.")).toBeInTheDocument();
+  });
+
+  test("shows next episode dates in the client timezone", () => {
+    render(
+      <WatchlistPage
+        highlightedShowId={null}
+        isLoading={false}
+        nextDisabled={true}
+        onMarkAiredWatched={noop}
+        onNextPage={noop}
+        onPreviousPage={noop}
+        onRefresh={noop}
+        onRemove={noop}
+        onToggleWatched={noop}
+        previousDisabled={true}
+        shows={[
+          createTrackedShow({
+            episodes: [
+              createTrackedEpisode({
+                airDate: "2026-05-08",
+                airDateTime: "2026-05-08T13:00:00.000Z",
+                airTimeLabel: "9:00 AM",
+                episodeLabel: "S1 • E6",
+              }),
+            ],
+            title: "An Observation Log of My Fiancee Who Calls Herself a Villainess",
+          }),
+        ]}
+        syncingId={null}
+      />,
+    );
+
+    expect(screen.getByText(/on May 8, 2026/)).toBeInTheDocument();
+    expect(screen.queryByText(/on May 7, 2026/)).not.toBeInTheDocument();
   });
 });

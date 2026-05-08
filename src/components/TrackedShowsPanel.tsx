@@ -1,5 +1,5 @@
 import { useEffect, useRef } from "react";
-import { formatLongDate, isEpisodeAired } from "../lib/date";
+import { formatLongDate, fromLocalDateKey, isEpisodeAired } from "../lib/date";
 import type { TrackedShow } from "../types";
 
 interface TrackedShowsPanelProps {
@@ -115,7 +115,7 @@ export function TrackedShowsPanel({
                         Next: <span className="font-semibold text-sand-50">{nextEpisode.episodeLabel}</span>
                         {nextEpisode.airTimeLabel ? ` at ${nextEpisode.airTimeLabel}` : ""}
                         {" "}
-                        on {formatLongDate(new Date(nextEpisode.airDate))}
+                        on {formatLongDate(fromLocalDateKey(nextEpisode.airDate))}
                       </span>
                     ) : (
                       <span className="text-emerald-100">Caught up</span>
