@@ -2,10 +2,6 @@
 
 Track Shows is a local-first React app for tracking TV shows. It combines a weekly calendar, a paginated watchlist, and optional private cloud sync so you can keep your data on your machine by default.
 
-## Repository Note
-
-This repository is kept private for now while we decide whether to publish the project more broadly later.
-
 ## What It Does
 
 - Search TV shows through TVMaze.
@@ -108,4 +104,4 @@ The container writes runtime JSON to `/data/track-shows`, so mounting that path 
 
 ## Data Sources
 
-- TV search and episode data come from TVMaze
+- TV show search, schedules, and episode metadata are provided by [TVmaze](https://www.tvmaze.com/) under CC BY-SA.

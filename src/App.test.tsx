@@ -134,6 +134,11 @@ describe("App", () => {
 
     await user.click(settingsTab);
     await waitFor(() => expect(screen.getByText("Cloud sync")).toBeInTheDocument());
+    expect(screen.getByText("API details")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "TVmaze" })).toHaveAttribute(
+      "href",
+      "https://www.tvmaze.com/",
+    );
 
     await user.click(calendarTab);
     await waitFor(() => expect(screen.getByText("January 8, 2024")).toBeInTheDocument());
