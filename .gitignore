@@ -1,0 +1,9 @@
+.env*
+!.env.example
+node_modules
+dist
+storybook-static
+.DS_Store
+*.log
+vite.config.ts.timestamp-*
+.track-shows-demo/

@@ -1,0 +1,12 @@
+.DS_Store
+.env*
+!.env.example
+.git
+.github
+.vite
+coverage
+dist
+node_modules
+storybook-static
+test-results
+.track-shows-demo
