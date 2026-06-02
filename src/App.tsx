@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import { buildTrackedShow, refreshTrackedShow, searchShows } from "./lib/api";
 import { addDays, fromLocalDateKey, isEpisodeAired, startOfWeekMonday, toLocalDateKey, weekContainsDate } from "./lib/date";
@@ -15,6 +15,10 @@ const VIEW_PARAM = "view";
 const WEEK_START_PARAM = "weekStart";
 const WATCHLIST_PAGE_SIZE = 20;
 const SEARCH_SCOPE_STORAGE_KEY = "track-shows.searchScope";
+const DAILY_WATCHLIST_REFRESH_STORAGE_KEY = "track-shows.lastDailyWatchlistRefreshDate";
+const DAILY_WATCHLIST_REFRESH_HOUR = 7;
+const DAILY_WATCHLIST_REFRESH_CHECK_MS = 60 * 1000;
+const DAILY_WATCHLIST_REFRESH_SYNC_ID = "__daily-watchlist-refresh__";
 
 export default function App(): JSX.Element {
   const { error: dataError, isLoading: dataLoading, state, setState } = useTrackShowsState();
@@ -25,9 +29,14 @@ export default function App(): JSX.Element {
   const [showSearchErrors, setShowSearchErrors] = useState<string[]>([]);
   const [showSearching, setShowSearching] = useState(false);
   const [syncingId, setSyncingId] = useState<string | null>(null);
+  const [todayKey, setTodayKey] = useState(() => toLocalDateKey(new Date()));
   const [weekStart, setWeekStart] = useState<Date>(() => getInitialWeekStart());
   const [watchlistPage, setWatchlistPage] = useState(1);
   const [watchlistFocusId, setWatchlistFocusId] = useState<string | null>(null);
+  const trackedShowsRef = useRef<TrackedShow[]>([]);
+  const syncingIdRef = useRef<string | null>(null);
+  const dailyRefreshInFlightRef = useRef(false);
+  const lastDailyRefreshDateRef = useRef<string | null>(getLastDailyWatchlistRefreshDate());
 
   const trackedShows = state.trackedShows;
   const trackedIds = new Set(trackedShows.map((show) => show.id));
@@ -54,6 +63,34 @@ export default function App(): JSX.Element {
   useEffect(() => {
     syncUrlToState(activeView, weekStart);
   }, [activeView, weekStart]);
+
+  useEffect(() => {
+    trackedShowsRef.current = trackedShows;
+  }, [trackedShows]);
+
+  useEffect(() => {
+    syncingIdRef.current = syncingId;
+  }, [syncingId]);
+
+  useEffect(() => {
+    function refreshTodayKey(): void {
+      setTodayKey(toLocalDateKey(new Date()));
+    }
+
+    function refreshWhenVisible(): void {
+      if (document.visibilityState === "visible") {
+        refreshTodayKey();
+      }
+    }
+
+    document.addEventListener("visibilitychange", refreshWhenVisible);
+    window.addEventListener("focus", refreshTodayKey);
+
+    return () => {
+      document.removeEventListener("visibilitychange", refreshWhenVisible);
+      window.removeEventListener("focus", refreshTodayKey);
+    };
+  }, []);
 
   useEffect(() => {
     try {
@@ -114,6 +151,76 @@ export default function App(): JSX.Element {
       setWatchlistFocusId(null);
     }
   }, [query, searchScope]);
+
+  useEffect(() => {
+    if (dataLoading) {
+      return undefined;
+    }
+
+    function maybeRefreshWatchlist(): void {
+      void handleDailyWatchlistRefresh();
+    }
+
+    function refreshWhenVisible(): void {
+      if (document.visibilityState === "visible") {
+        maybeRefreshWatchlist();
+      }
+    }
+
+    maybeRefreshWatchlist();
+
+    const intervalId = window.setInterval(maybeRefreshWatchlist, DAILY_WATCHLIST_REFRESH_CHECK_MS);
+    document.addEventListener("visibilitychange", refreshWhenVisible);
+    window.addEventListener("focus", maybeRefreshWatchlist);
+
+    return () => {
+      window.clearInterval(intervalId);
+      document.removeEventListener("visibilitychange", refreshWhenVisible);
+      window.removeEventListener("focus", maybeRefreshWatchlist);
+    };
+  }, [dataLoading]);
+
+  async function handleDailyWatchlistRefresh(): Promise<void> {
+    const shows = trackedShowsRef.current;
+
+    if (
+      dailyRefreshInFlightRef.current ||
+      syncingIdRef.current ||
+      !isDailyWatchlistRefreshDue(new Date(), shows.length, lastDailyRefreshDateRef.current)
+    ) {
+      return;
+    }
+
+    dailyRefreshInFlightRef.current = true;
+    syncingIdRef.current = DAILY_WATCHLIST_REFRESH_SYNC_ID;
+    setSyncingId(DAILY_WATCHLIST_REFRESH_SYNC_ID);
+
+    try {
+      const refreshedShows = new Map<string, TrackedShow>();
+
+      for (const show of shows) {
+        try {
+          refreshedShows.set(show.id, await refreshTrackedShow(show));
+        } catch (error) {
+          console.error(error);
+        }
+      }
+
+      if (refreshedShows.size > 0) {
+        setState((current) => ({
+          ...current,
+          trackedShows: current.trackedShows.map((show) => refreshedShows.get(show.id) ?? show),
+        }));
+      }
+    } finally {
+      const refreshDate = toLocalDateKey(new Date());
+      lastDailyRefreshDateRef.current = refreshDate;
+      setLastDailyWatchlistRefreshDate(refreshDate);
+      dailyRefreshInFlightRef.current = false;
+      syncingIdRef.current = null;
+      setSyncingId((current) => (current === DAILY_WATCHLIST_REFRESH_SYNC_ID ? null : current));
+    }
+  }
 
   async function handleTrack(result: SearchResult): Promise<void> {
     if (trackedIds.has(result.id) || syncingId) {
@@ -256,6 +363,7 @@ export default function App(): JSX.Element {
           onNextWeek={() => handleWeekShift(7)}
           onPreviousWeek={() => handleWeekShift(-7)}
           onToggleWatched={handleToggleWatched}
+          todayKey={todayKey}
           weekStart={weekStart}
         />
       );
@@ -289,12 +397,12 @@ export default function App(): JSX.Element {
       </div>
 
       <div className="relative mx-auto flex max-w-[1600px] flex-col gap-6 px-4 py-6 sm:px-6 lg:px-8">
-        <div className="relative z-50 grid gap-4 lg:grid-cols-[auto_1fr] lg:items-center">
-          <span className="text-xs font-semibold uppercase tracking-[0.45em] text-ember-200/75 lg:col-span-2">
+        <div className="relative z-50 grid gap-4 min-[760px]:grid-cols-[auto_minmax(20rem,30rem)] min-[760px]:items-center min-[760px]:justify-between lg:grid-cols-[auto_1fr]">
+          <span className="text-xs font-semibold uppercase tracking-[0.45em] text-ember-200/75 min-[760px]:col-span-2">
             Track Shows
           </span>
 
-          <div className="inline-flex rounded-full border border-white/10 bg-white/[0.04] p-1 shadow-soft">
+          <div className="inline-flex w-full rounded-full border border-white/10 bg-white/[0.04] p-1 shadow-soft min-[760px]:w-auto">
             <TabButton active={activeView === "calendar"} onClick={() => setActiveView("calendar")}>
               Calendar
             </TabButton>
@@ -416,6 +524,39 @@ function getInitialSearchScope(): SearchScope {
   } catch {
     return "shows";
   }
+}
+
+function getLastDailyWatchlistRefreshDate(): string | null {
+  if (typeof window === "undefined") {
+    return null;
+  }
+
+  try {
+    return window.localStorage.getItem(DAILY_WATCHLIST_REFRESH_STORAGE_KEY);
+  } catch {
+    return null;
+  }
+}
+
+function setLastDailyWatchlistRefreshDate(dateKey: string): void {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  try {
+    window.localStorage.setItem(DAILY_WATCHLIST_REFRESH_STORAGE_KEY, dateKey);
+  } catch {
+    // Ignore storage failures; the in-memory ref still prevents repeat refreshes this session.
+  }
+}
+
+function isDailyWatchlistRefreshDue(now: Date, showCount: number, lastRefreshDate: string | null): boolean {
+  if (showCount === 0) {
+    return false;
+  }
+
+  const todayKey = toLocalDateKey(now);
+  return now.getHours() >= DAILY_WATCHLIST_REFRESH_HOUR && lastRefreshDate !== todayKey;
 }
 
 function matchesWatchlistSearchQuery(show: TrackedShow, normalizedQuery: string): boolean {

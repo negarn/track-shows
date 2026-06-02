@@ -5,6 +5,7 @@ interface WeeklyCalendarProps {
   isLoading?: boolean;
   weekStart: Date;
   episodes: TrackedEpisode[];
+  todayKey: string;
   onToggleWatched: (episodeId: string) => void;
 }
 
@@ -12,11 +13,11 @@ export function WeeklyCalendar({
   isLoading = false,
   weekStart,
   episodes,
+  todayKey,
   onToggleWatched,
 }: WeeklyCalendarProps): JSX.Element {
   const days = buildWeekDays(weekStart);
   const grouped = groupEpisodesByDay(episodes);
-  const todayKey = toLocalDateKey(new Date());
 
   return (
     <section className="panel p-0">

@@ -9,6 +9,7 @@ interface CalendarPageProps {
   onNextWeek: () => void;
   onPreviousWeek: () => void;
   onToggleWatched: (episodeId: string) => void;
+  todayKey: string;
   weekStart: Date;
 }
 
@@ -18,6 +19,7 @@ export function CalendarPage({
   onNextWeek,
   onPreviousWeek,
   onToggleWatched,
+  todayKey,
   weekStart
 }: CalendarPageProps): JSX.Element {
   return (
@@ -26,6 +28,7 @@ export function CalendarPage({
         isLoading={isLoading}
         weekStart={weekStart}
         episodes={episodes}
+        todayKey={todayKey}
         onToggleWatched={onToggleWatched}
       />
       <WeekNavigation onPreviousWeek={onPreviousWeek} onNextWeek={onNextWeek} />

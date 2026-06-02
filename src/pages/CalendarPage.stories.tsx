@@ -21,7 +21,7 @@ export default meta;
 type Story = StoryObj<typeof meta>;
 
 function renderCalendarPage(args: Story["args"] = {}) {
-  return <CalendarPage {...args} weekStart={new Date(2024, 0, 1)} />;
+  return <CalendarPage {...args} todayKey="2024-01-01" weekStart={new Date(2024, 0, 1)} />;
 }
 
 export const Empty: Story = {

@@ -114,7 +114,7 @@ export function SearchPanel({
   }
 
   return (
-    <div ref={containerRef} className="relative z-50 w-full max-w-[30rem] lg:justify-self-end">
+    <div ref={containerRef} className="relative z-50 w-full min-[760px]:max-w-[30rem] min-[760px]:justify-self-end">
       <div className="flex items-stretch overflow-hidden rounded-full border border-white/10 bg-ink-800/80 shadow-soft backdrop-blur-xl">
         <button
           type="button"

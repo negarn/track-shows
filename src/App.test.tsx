@@ -1,10 +1,10 @@
-import { render, screen, act, waitFor, within } from "@testing-library/react";
+import { render, screen, act, fireEvent, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, test, vi } from "vitest";
 import App from "./App";
 import { buildTrackedShow, refreshTrackedShow, searchShows } from "./lib/api";
 import { loadTrackShowsState, saveTrackShowsState } from "./lib/trackShowsState";
-import type { SearchResult } from "./types";
+import type { SearchResult, TrackedShow } from "./types";
 import { createDeferred, createSearchResult, createSnapshot, createTrackedShow } from "./test/testUtils";
 
 vi.mock("./lib/api", () => ({
@@ -26,6 +26,7 @@ describe("App", () => {
   const mockedRefreshTrackedShow = vi.mocked(refreshTrackedShow);
 
   beforeEach(() => {
+    vi.useRealTimers();
     mockedLoadTrackShowsState.mockReset();
     mockedSaveTrackShowsState.mockReset();
     mockedSearchShows.mockReset();
@@ -33,6 +34,7 @@ describe("App", () => {
     mockedRefreshTrackedShow.mockReset();
     mockedSaveTrackShowsState.mockImplementation(async (snapshot) => snapshot);
     mockedLoadTrackShowsState.mockResolvedValue(createSnapshot());
+    window.localStorage.clear();
     window.history.pushState({}, "", "/");
   });
 
@@ -142,6 +144,96 @@ describe("App", () => {
 
     await user.click(calendarTab);
     await waitFor(() => expect(screen.getByText("January 8, 2024")).toBeInTheDocument());
+  });
+
+  test("updates the today marker when the tab becomes active again", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date(2024, 0, 1, 23, 55));
+    window.history.pushState({}, "", "/?weekStart=2024-01-01");
+
+    render(<App />);
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(screen.getByText("Today").closest("div.flex.min-h-\\[4\\.75rem\\]")).toHaveTextContent("January 1, 2024");
+
+    Object.defineProperty(document, "visibilityState", {
+      configurable: true,
+      value: "hidden",
+    });
+    vi.setSystemTime(new Date(2024, 0, 2, 0, 5));
+    fireEvent(document, new Event("visibilitychange"));
+    expect(screen.getByText("Today").closest("div.flex.min-h-\\[4\\.75rem\\]")).toHaveTextContent("January 1, 2024");
+
+    Object.defineProperty(document, "visibilityState", {
+      configurable: true,
+      value: "visible",
+    });
+    fireEvent(document, new Event("visibilitychange"));
+    expect(screen.getByText("Today").closest("div.flex.min-h-\\[4\\.75rem\\]")).toHaveTextContent("January 2, 2024");
+  });
+
+  test("auto-refreshes the watchlist once per day after 7 AM", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date(2024, 0, 1, 6, 59));
+
+    const firstShow = createTrackedShow({ id: "tvmaze:1", sourceId: "1", title: "First Show" });
+    const secondShow = createTrackedShow({
+      id: "tvmaze:2",
+      sourceId: "2",
+      title: "Second Show",
+      episodes: [
+        {
+          ...firstShow.episodes[0],
+          id: "tvmaze:2:1",
+          showId: "tvmaze:2",
+          showTitle: "Second Show",
+        },
+      ],
+    });
+    const refreshedShows: Record<string, TrackedShow> = {
+      "tvmaze:1": { ...firstShow, title: "First Show Updated" },
+      "tvmaze:2": { ...secondShow, title: "Second Show Updated" },
+    };
+
+    mockedLoadTrackShowsState.mockResolvedValueOnce(createSnapshot([firstShow, secondShow]));
+    mockedRefreshTrackedShow.mockImplementation(async (show) => refreshedShows[show.id]);
+
+    render(<App />);
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(mockedRefreshTrackedShow).not.toHaveBeenCalled();
+
+    vi.setSystemTime(new Date(2024, 0, 1, 7, 0));
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(60_000);
+    });
+
+    expect(mockedRefreshTrackedShow).toHaveBeenCalledTimes(2);
+    expect(mockedRefreshTrackedShow).toHaveBeenNthCalledWith(1, firstShow);
+    expect(mockedRefreshTrackedShow).toHaveBeenNthCalledWith(2, secondShow);
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(180);
+      await Promise.resolve();
+    });
+
+    expect(mockedSaveTrackShowsState).toHaveBeenCalledTimes(1);
+    expect(mockedSaveTrackShowsState.mock.calls[0]?.[0].trackedShows).toEqual([
+      refreshedShows["tvmaze:1"],
+      refreshedShows["tvmaze:2"],
+    ]);
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(60 * 60 * 1000);
+    });
+
+    expect(mockedRefreshTrackedShow).toHaveBeenCalledTimes(2);
   });
 
   test("shows calendar row skeletons while tracked shows are loading", async () => {
