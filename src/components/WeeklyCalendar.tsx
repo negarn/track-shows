@@ -1,4 +1,5 @@
 import { buildWeekDays, formatFullDate, toLocalDateKey } from "../lib/date";
+import { sortEpisodes } from "../lib/episodes";
 import type { TrackedEpisode } from "../types";
 
 interface WeeklyCalendarProps {
@@ -24,7 +25,7 @@ export function WeeklyCalendar({
       <div className="divide-y divide-white/10">
         {days.map((day) => {
           const key = toLocalDateKey(day);
-          const dayEpisodes = [...(grouped.get(key) ?? [])].sort(compareEpisodes);
+          const dayEpisodes = sortEpisodes(grouped.get(key) ?? []);
           const isToday = key === todayKey;
           const weekday = day.toLocaleDateString("en-US", { weekday: "short" });
 
@@ -104,15 +105,4 @@ function groupEpisodesByDay(episodes: TrackedEpisode[]): Map<string, TrackedEpis
   }
 
   return groups;
-}
-
-function compareEpisodes(a: TrackedEpisode, b: TrackedEpisode): number {
-  const aTime = a.airDateTime ? new Date(a.airDateTime).getTime() : 0;
-  const bTime = b.airDateTime ? new Date(b.airDateTime).getTime() : 0;
-
-  if (aTime !== bTime) {
-    return aTime - bTime;
-  }
-
-  return a.title.localeCompare(b.title);
 }

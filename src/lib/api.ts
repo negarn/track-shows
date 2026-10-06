@@ -1,4 +1,5 @@
 import { formatAirTime, toLocalDateKey } from "./date";
+import { sortEpisodes } from "./episodes";
 import type { SearchResult, TrackedEpisode, TrackedShow } from "../types";
 
 const TVMAZE_BASE = "https://api.tvmaze.com";
@@ -134,7 +135,7 @@ export async function searchShows(query: string): Promise<SearchResult[]> {
 async function fetchTvMazeEpisodes(showId: string, show: SearchResult): Promise<TrackedEpisode[]> {
   const episodes = await fetchJson<TvMazeEpisode[]>(`${TVMAZE_BASE}/shows/${showId}/episodes`);
 
-  return episodes
+  const trackedEpisodes: TrackedEpisode[] = episodes
     .filter((episode) => Boolean(episode.airdate))
     .map((episode) => {
       const airDateTime = episode.airstamp ?? (episode.airdate ? `${episode.airdate}T00:00:00` : undefined);
@@ -159,8 +160,9 @@ async function fetchTvMazeEpisodes(showId: string, show: SearchResult): Promise<
         watched: false,
         sourceUrl: episode.url ?? show.sourceUrl
       };
-    })
-    .sort(compareEpisodesByAirDate);
+    });
+
+  return sortEpisodes(trackedEpisodes);
 }
 
 function formatEpisodeLabel(season?: number | null, number?: number | null, type?: string | null): string {
@@ -177,17 +179,6 @@ function formatEpisodeLabel(season?: number | null, number?: number | null, type
   }
 
   return "Episode";
-}
-
-function compareEpisodesByAirDate(a: TrackedEpisode, b: TrackedEpisode): number {
-  const aTime = a.airDateTime ? new Date(a.airDateTime).getTime() : 0;
-  const bTime = b.airDateTime ? new Date(b.airDateTime).getTime() : 0;
-
-  if (aTime !== bTime) {
-    return aTime - bTime;
-  }
-
-  return a.title.localeCompare(b.title);
 }
 
 function mergeWatchedEpisodes(previous: TrackedEpisode[], next: TrackedEpisode[]): TrackedEpisode[] {
